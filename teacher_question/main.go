@@ -9,7 +9,9 @@ import (
 
 // Student represents a student with a name.
 type Student struct {
-	Name string
+	Name      string
+	isCorrect bool
+	stdAnswer float64
 }
 
 // Question struct represents a math question.
@@ -19,20 +21,20 @@ type Question struct {
 }
 
 func main() {
-	rand.Seed(time.Now().UnixNano()) // Seed the random number generator
+	//rand.Seed(time.Now().UnixNano())
 
 	// Create students
 	students := []Student{
-		{"A"},
-		{"B"},
-		{"C"},
-		{"D"},
-		{"E"},
+		{Name: "A"},
+		{Name: "B"},
+		{Name: "C"},
+		{Name: "D"},
+		{Name: "E"},
 	}
 
 	// Use a channel to communicate the question to the students
-	questionCh := make(chan Question)
-	answerCh := make(chan string)
+	questionCh := make(chan Question, 20)
+	answerCh := make(chan Student, 20)
 
 	// Teacher and students goroutines
 	go teacher(questionCh, answerCh)
@@ -43,13 +45,12 @@ func main() {
 }
 
 // teacher function models the teacher's behavior
-func teacher(questionCh chan<- Question, answerCh <-chan string) {
+func teacher(questionCh chan<- Question, answerCh <-chan Student) {
 	for {
 		// Teacher starts the class
 		fmt.Println("Teacher: Guys, are you ready?")
 		time.Sleep(3 * time.Second) // Warm-up time
 
-		// Generate a question
 		question := generateQuestion()
 		fmt.Printf("Teacher: %s = ?\n", question.Text)
 
@@ -57,13 +58,29 @@ func teacher(questionCh chan<- Question, answerCh <-chan string) {
 		questionCh <- question
 
 		// Wait for an answer from a student
-		winner := <-answerCh
-		fmt.Printf("Teacher: %s, you are right!\n", winner)
+		for i := 0; i < 5; i++ {
+			winner := <-answerCh
+			if winner.isCorrect { //ok
+				fmt.Printf("Student %s: %s = %.2f!\n", winner.Name, question.Text, winner.stdAnswer)
+				fmt.Printf("Teacher: %s, you are right!\n", winner.Name)
+				for _, name := range []string{"A", "B", "C", "D", "E"} {
+					if name != winner.Name {
+						fmt.Printf("Student %s: %s, you win.\n", name, winner.Name)
+					}
+				}
+				clearChannel(answerCh)
+				break
+			} else { //not ok
+				fmt.Printf("Student %s: %s = %.2f!\n", winner.Name, question.Text, winner.stdAnswer)
+				fmt.Printf("Teacher: %s, you are wrong!\n", winner.Name)
+			}
+		}
+		fmt.Printf("Teacher: Boooo~ Answer is %.2f.\n", question.Answer)
 	}
 }
 
 // studentsGroup handles the group of students
-func studentsGroup(students []Student, questionCh <-chan Question, answerCh chan<- string) {
+func studentsGroup(students []Student, questionCh <-chan Question, answerCh chan<- Student) {
 	var wg sync.WaitGroup
 
 	for question := range questionCh {
@@ -77,26 +94,29 @@ func studentsGroup(students []Student, questionCh <-chan Question, answerCh chan
 }
 
 // answer simulates a student attempting to answer a question
-func (s Student) answer(question Question, wg *sync.WaitGroup, answerCh chan<- string) {
+func (s Student) answer(question Question, wg *sync.WaitGroup, answerCh chan<- Student) {
 	defer wg.Done()
 	// Random thinking time between 1 and 3 seconds
-	time.Sleep(time.Duration(rand.Intn(3)+1) * time.Second)
-	select {
-	case answerCh <- s.Name:
-		fmt.Printf("Student %s: %s = %.2f!\n", s.Name, question.Text, question.Answer)
-		for _, name := range []string{"A", "B", "C", "D", "E"} {
-			if name != s.Name {
-				fmt.Printf("Student %s: %s, you win.\n", name, s.Name)
-			}
-		}
-	default:
+	c := rand.Intn(101)
+
+	if rand.Intn(10) < 3 {
+		s.stdAnswer = float64(c)
+		s.isCorrect = false
+	} else {
+		s.isCorrect = true
+		s.stdAnswer = question.Answer
 	}
+
+	time.Sleep(time.Duration(rand.Intn(3)+1) * time.Second)
+
+	answerCh <- s
 }
 
 // generateQuestion creates a random math question
 func generateQuestion() Question {
 	a := rand.Intn(101)
 	b := rand.Intn(101)
+
 	operators := []string{"+", "-", "*", "/"}
 	op := operators[rand.Intn(len(operators))]
 
@@ -123,5 +143,15 @@ func evaluateExpression(a, b int, op string) float64 {
 		return float64(a) / float64(b)
 	default:
 		return 0
+	}
+}
+
+func clearChannel(ch <-chan Student) {
+	for {
+		select {
+		case <-ch:
+		default:
+			return
+		}
 	}
 }
