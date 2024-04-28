@@ -27,8 +27,8 @@ func main() {
 		{Name: "E"},
 	}
 
-	questionCh := make(chan Question, 20)
-	answerCh := make(chan Student, 20)
+	questionCh := make(chan Question, 5)
+	answerCh := make(chan Student, 5)
 
 	go teacher(questionCh, answerCh)
 	go studentsGroup(students, questionCh, answerCh)
@@ -39,8 +39,9 @@ func main() {
 // teacher function models the teacher's behavior
 func teacher(questionCh chan<- Question, answerCh <-chan Student) {
 	for {
+		wrongfreq := 0
 		fmt.Println("Teacher: Guys, are you ready?")
-		time.Sleep(3 * time.Second) // Warm-up time
+		time.Sleep(3 * time.Second)
 
 		question := generateQuestion()
 		fmt.Printf("Teacher: %s = ?\n", question.Text)
@@ -48,23 +49,28 @@ func teacher(questionCh chan<- Question, answerCh <-chan Student) {
 		questionCh <- question
 
 		for i := 0; i < 5; i++ {
-			winner := <-answerCh
-			if winner.isCorrect { //ok
-				fmt.Printf("Student %s: %s = %.2f!\n", winner.Name, question.Text, winner.stdAnswer)
-				fmt.Printf("Teacher: %s, you are right!\n", winner.Name)
+			ans := <-answerCh
+			if ans.isCorrect { //ok
+				fmt.Printf("Student %s: %s = %.2f!\n", ans.Name, question.Text, question.Answer)
+				fmt.Printf("Teacher: %s, you are right!\n", ans.Name)
 				for _, name := range []string{"A", "B", "C", "D", "E"} {
-					if name != winner.Name {
-						fmt.Printf("Student %s: %s, you win.\n", name, winner.Name)
+					if name != ans.Name {
+						fmt.Printf("Student %s: %s, you win.\n", name, ans.Name)
 					}
 				}
 				clearChannel(answerCh)
 				break
 			} else { //not ok
-				fmt.Printf("Student %s: %s = %.2f!\n", winner.Name, question.Text, winner.stdAnswer)
-				fmt.Printf("Teacher: %s, you are wrong!\n", winner.Name)
+				fmt.Printf("Student %s: %s = %.2f!\n", ans.Name, question.Text, ans.stdAnswer)
+				fmt.Printf("Teacher: %s, you are wrong!\n", ans.Name)
+				wrongfreq++
+			}
+			if wrongfreq == 5 {
+				wrongfreq = 0
+				fmt.Printf("Teacher: Boooo~ Answer is %.2f.\n", question.Answer)
+				break
 			}
 		}
-		fmt.Printf("Teacher: Boooo~ Answer is %.2f.\n", question.Answer)
 	}
 }
 
@@ -87,8 +93,8 @@ func (s Student) answer(question Question, wg *sync.WaitGroup, answerCh chan<- S
 	c := rand.Intn(101)
 
 	if rand.Intn(10) < 3 {
-		s.stdAnswer = float64(c)
 		s.isCorrect = false
+		s.stdAnswer = float64(c)
 	} else {
 		s.isCorrect = true
 		s.stdAnswer = question.Answer
